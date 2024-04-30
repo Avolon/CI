@@ -4,7 +4,7 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                // Запуск контейнера с nginx
+                // Запуск контейнера с nginx и проверка суммы MD5
                 script {
                     docker.image('nginx:latest').withRun('-p 9889:80') { c ->
                         // Проверка кода ответа HTTP-запроса
@@ -34,6 +34,16 @@ pipeline {
             // Удаление контейнера после выполнения CI
             sh 'docker stop $(docker ps -q --filter ancestor=nginx)'
             sh 'docker rm $(docker ps -aq --filter ancestor=nginx)'
+        }
+        failure {
+            // Отправка оповещения в Telegram в случае ошибки
+            script {
+                telegramSend(
+                    message: "Произошла ошибка в процессе сборки CI: ${currentBuild.fullDisplayName}",
+                    token: "YOUR_TELEGRAM_BOT_TOKEN",
+                    chatId: "YOUR_TELEGRAM_CHAT_ID"
+                )
+            }
         }
     }
 }
