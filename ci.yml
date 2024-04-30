@@ -1,0 +1,39 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Build') {
+            steps {
+                // Запуск контейнера с nginx
+                script {
+                    docker.image('nginx:latest').withRun('-p 9889:80') { c ->
+                        // Проверка кода ответа HTTP-запроса
+                        def httpResponse = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:9889", returnStdout: true).trim()
+                        if (httpResponse != '200') {
+                            error("HTTP response code is not 200: ${httpResponse}")
+                        }
+
+                        // Получение содержимого index.html и сравнение md5-сумм
+                        def fileUrl = 'https://raw.githubusercontent.com/Avolon/CI/main/index.html'
+                        def localFilePath = '/opt/ci/index.html'
+
+                        sh "curl -o $localFilePath $fileUrl"
+                        def originalMD5 = sh(script: "md5sum $localFilePath | cut -d' ' -f1", returnStdout: true).trim()
+                        def nginxMD5 = sh(script: "curl -s http://localhost:9889/index.html | md5sum | cut -d' ' -f1", returnStdout: true).trim()
+                        if (originalMD5 != nginxMD5) {
+                            error("MD5 checksums do not match: ${originalMD5} vs ${nginxMD5}")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Удаление контейнера после выполнения CI
+            sh 'docker stop $(docker ps -q --filter ancestor=nginx)'
+            sh 'docker rm $(docker ps -aq --filter ancestor=nginx)'
+        }
+    }
+}
